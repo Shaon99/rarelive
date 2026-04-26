@@ -21,7 +21,7 @@
                                     class="fas fa-plus-circle"></i>
                                 {{ __('Create Account') }}</a>
                         </div>
-                        <div class="card-body">make a 
+                        <div class="card-body">
                             <div class="table-responsive">
                                 <table id="table_1" class="table table-bordered">
                                     <thead>

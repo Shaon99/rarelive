@@ -58,7 +58,9 @@ class HomeController extends Controller
         $data['total_purchases'] = $queries['purchases']->sum('grand_total');
         $data['return_total_purchases'] = $queries['refund']->sum('total_amount');
 
-        $opening_balance = PaymentMethod::sum('current_balance');
+        // Steadfast balance comes from API below; exclude STEADFAST row from DB sum to avoid double-count.
+        // CARRYBEE, CASH, BANK, etc. use local current_balance (e.g. Carrybee webhooks increment CARRYBEE).
+        $opening_balance = $this->sumNonSteadfastPaymentBalances();
 
         $data['topSellingProducts'] = $this->fetchTopSellingProducts($todayFilter);
         $data['topSellingByLocation'] = $this->fetchTopSellingByLocation($todayFilter);
@@ -80,7 +82,7 @@ class HomeController extends Controller
             'current_balance' => $steadfastBalance
         ];
 
-        $data['total_profit'] = $opening_balance + $steadfastBalance;
+        $data['total_profit'] = (float) $opening_balance + (float) $steadfastBalance;
 
 
         $data['recentSales'] = Sales::with('paymentMethod')
@@ -160,13 +162,23 @@ class HomeController extends Controller
             $cached = PaymentMethod::query()
                 ->where('type', 'Partial')
                 ->pluck('id')
-                ->map(fn($id) => (int) $id)
+                ->map(fn ($id) => (int) $id)
                 ->unique()
                 ->values()
                 ->all();
         }
 
         return $cached;
+    }
+
+    /**
+     * Sum stored balances for all payment methods except STEADFAST (live API balance is merged separately).
+     */
+    private function sumNonSteadfastPaymentBalances(): float
+    {
+        return (float) PaymentMethod::query()
+            ->where('type', '!=', CommonConstant::STEADFAST)
+            ->sum('current_balance');
     }
 
     /**
@@ -613,7 +625,7 @@ class HomeController extends Controller
             'current_balance' => $steadfastBalance
         ];
 
-        $total_profit = PaymentMethod::sum('current_balance') + $steadfastBalance;
+        $total_profit = $this->sumNonSteadfastPaymentBalances() + $steadfastBalance;
 
         return [
             'total_expense' => $queries['expense']->sum('amount'),

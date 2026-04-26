@@ -68,13 +68,19 @@ class SalesTable extends Component
 
     public $courier_status = '';
 
+    /** Filter by sales.courier_name: steadfast, carrybee, none (no courier), or empty for all. */
+    public $courier_name = '';
+
     public $platform = '';
 
     public $payment_status = '';
 
     public function applyFilter() {}
 
-    protected $queryString = ['system_status'];
+    protected $queryString = [
+        'system_status' => ['except' => ''],
+        'courier_name' => ['except' => ''],
+    ];
 
     private function buildQuery()
     {
@@ -103,6 +109,8 @@ class SalesTable extends Component
                     return $query->search($this->search);
                 })
                 ->orderBy($this->sortBy, $this->sortDir);
+        } else {
+            $query = Sales::query()->whereRaw('0 = 1');
         }
 
         if (request()->has('trashed') && request('trashed') == true) {
@@ -123,6 +131,14 @@ class SalesTable extends Component
 
         if ($this->courier_status) {
             $query->where('status', $this->courier_status);
+        }
+
+        if ($this->courier_name === 'none') {
+            $query->where(function ($q) {
+                $q->whereNull('courier_name')->orWhere('courier_name', '');
+            });
+        } elseif (in_array($this->courier_name, ['steadfast', 'carrybee'], true)) {
+            $query->where('courier_name', $this->courier_name);
         }
 
         if ($this->platform) {
@@ -172,7 +188,7 @@ class SalesTable extends Component
         // Validate filters
         if (
             empty($this->created_by) && empty($this->lead_by) && empty($this->startDate) && empty($this->endDate) &&
-            empty($this->system_status) && empty($this->courier_status) && empty($this->platform)
+            empty($this->system_status) && empty($this->courier_status) && empty($this->courier_name) && empty($this->platform)
         ) {
             session()->flash('error', 'At least one filter option must be provided before exporting.');
 
@@ -331,6 +347,7 @@ class SalesTable extends Component
         $this->lead_by = '';
         $this->system_status = '';
         $this->courier_status = '';
+        $this->courier_name = '';
         $this->platform = '';
         $this->search = '';
         $this->exportFinished = false;

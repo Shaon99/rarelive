@@ -61,6 +61,14 @@
                     </select>
                 </div>
                 <div class="col-md-2 col-sm-6 col-6 mb-2">
+                    <select class="form-control" wire:model="courier_name">
+                        <option value="" selected disabled>Courier</option>
+                        <option value="steadfast">Steadfast</option>
+                        <option value="carrybee">Carrybee</option>
+                        <option value="none">No courier</option>
+                    </select>
+                </div>
+                <div class="col-md-2 col-sm-6 col-6 mb-2">
                     <select class="form-control" wire:model="payment_status">
                         <option value="" selected disabled>Payment status</option>
                         <option value="2">Due</option>
