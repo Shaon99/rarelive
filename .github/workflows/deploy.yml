@@ -1,39 +1,42 @@
-name: Deploy website on push
-
 on:
   push:
     branches:
       - master
-      - main
-  workflow_dispatch:
+
+name: "🚀 Deploy website on push"
 
 jobs:
   web-deploy:
-    name: FTP Deploy
+    name: "🎉 Deploy"
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: "🚚 Get latest code"
         uses: actions/checkout@v4
 
-      - name: Sync files to server
-        uses: SamKirkland/FTP-Deploy-Action@4.3.5
+      - name: "📂 Sync files"
+        uses: SamKirkland/ftp-deploy-action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ftp.dhanshiribd.com
+          username: "rareliv@rareliv.optimosell.com"
+          password: "8CG%gvw}Xyh9x3PA"
           server-dir: /
           exclude: |
-            **/.git*
-            **/.github/**
-            **/.vscode/**
-            **/.idea/**
-            **/node_modules/**
-            **/vendor/**
-            **/tests/**
-            **/.env
-            **/.env.*
-            !**/.env.example
-            **/.DS_Store
-            **/.ftp-deploy-sync-state.json
-            **/.ftpquota
+            .git*
+            node_modules/**
+            vendor/**
+            storage/**
+            tests/**
+            .env
+            .github/**
+            .vscode/**
+            .gitignore
+            .idea/**
+            .DS_Store
+            .env.example
+            .env.backup
+            .env.production
+            .env.staging
+            .env.development
+            .env.testing
+            .env.local
+       
