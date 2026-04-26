@@ -9,6 +9,13 @@ use App\Models\Sales;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Carrybee webhooks: POST JSON to {@see \App\Http\Controllers\Admin\SalesController::handleCarrybeeWebhook}
+ * route name `carrybeeWebhook`, path `/carrybee-webhook` (GET/HEAD for URL checks).
+ *
+ * Fee updates (`shipping_cost` = delivery_fee, `cod_charge` = cod_fee) use events such as
+ * `order.created`, `order.updated`, and may also read nested keys under `data` / `order`.
+ */
 class CarrybeeWebhookService
 {
     public function __construct(
@@ -61,12 +68,12 @@ class CarrybeeWebhookService
 
     private function findCarrybeeSale(string $consignmentId, string $merchantOrderId): ?Sales
     {
-        $q = Sales::query()->where('courier_name', 'carrybee');
-
-        return $q->where(function ($query) use ($consignmentId, $merchantOrderId) {
+        $scope = function ($query) use ($consignmentId, $merchantOrderId): void {
             if ($consignmentId !== '' && $merchantOrderId !== '') {
-                $query->where('consignment_id', $consignmentId)
-                    ->orWhere('invoice_no', $merchantOrderId);
+                $query->where(function ($q) use ($consignmentId, $merchantOrderId) {
+                    $q->where('consignment_id', $consignmentId)
+                        ->orWhere('invoice_no', $merchantOrderId);
+                });
 
                 return;
             }
@@ -78,7 +85,24 @@ class CarrybeeWebhookService
             if ($merchantOrderId !== '') {
                 $query->where('invoice_no', $merchantOrderId);
             }
-        })->first();
+        };
+
+        $byCourier = Sales::query()
+            ->where($scope)
+            ->where('courier_name', 'carrybee')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($byCourier) {
+            return $byCourier;
+        }
+
+        // order.created can arrive before `courier_name` is persisted as carrybee
+        return Sales::query()
+            ->where($scope)
+            ->orderByRaw("CASE WHEN courier_name = 'carrybee' THEN 0 ELSE 1 END")
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**
@@ -316,25 +340,61 @@ class CarrybeeWebhookService
     }
 
     /**
+     * Carrybee may send fees at root or under nested objects (e.g. data / order).
+     *
+     * @return array<string, mixed>
+     */
+    private function flattenCarrybeePayload(array $payload): array
+    {
+        $flat = $payload;
+        foreach (['data', 'order', 'payload', 'body'] as $key) {
+            if (isset($payload[$key]) && is_array($payload[$key])) {
+                $flat = array_merge($flat, $payload[$key]);
+            }
+        }
+
+        return $flat;
+    }
+
+    /**
+     * Parse a fee only when the key is present with a non-empty value.
+     * Prevents null/"" from becoming 0 and wiping DB columns.
+     */
+    private function optionalFee(array $payload, string $key): ?float
+    {
+        if (! array_key_exists($key, $payload)) {
+            return null;
+        }
+
+        $raw = $payload[$key];
+        if ($raw === null) {
+            return null;
+        }
+        if (is_string($raw) && trim($raw) === '') {
+            return null;
+        }
+
+        return $this->parseAmount($raw);
+    }
+
+    /**
      * Resolve carrybee fee fields from multiple payload shapes.
      *
      * @return array{delivery_fee: ?float, cod_fee: ?float}
      */
     private function resolveCarrybeeFees(array $payload, Sales $sale): array
     {
-        $deliveryFee = array_key_exists('delivery_fee', $payload)
-            ? $this->parseAmount($payload['delivery_fee'])
-            : null;
+        $p = $this->flattenCarrybeePayload($payload);
 
-        $codFee = array_key_exists('cod_fee', $payload)
-            ? $this->parseAmount($payload['cod_fee'])
-            : null;
+        $deliveryFee = $this->optionalFee($p, 'delivery_fee');
+        $codFee = $this->optionalFee($p, 'cod_fee');
 
         // Some Carrybee payloads provide only a total fee.
         $totalFee = null;
         foreach (['total_fee', 'courier_fee', 'total_delivery_fee'] as $key) {
-            if (array_key_exists($key, $payload)) {
-                $totalFee = $this->parseAmount($payload[$key]);
+            $parsed = $this->optionalFee($p, $key);
+            if ($parsed !== null) {
+                $totalFee = $parsed;
                 break;
             }
         }
