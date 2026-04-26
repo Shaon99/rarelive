@@ -18,9 +18,88 @@ use Illuminate\Support\Facades\Log;
  */
 class CarrybeeWebhookService
 {
+    private const LOG_PREFIX = '[carrybee_webhook]';
+
+    private const PAYLOAD_LOG_MAX_BYTES = 24000;
+
     public function __construct(
         protected StockService $stockService
     ) {}
+
+    /**
+     * Structured Carrybee webhook logs (grep `storage/logs` for {@see self::LOG_PREFIX}).
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function carrybeeLog(string $stage, array $context = []): void
+    {
+        Log::info(self::LOG_PREFIX.' '.$stage, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function extractCarrybeeLogSnapshot(array $payload): array
+    {
+        $flat = $this->flattenCarrybeePayload($payload);
+        $feeKeys = [
+            'delivery_fee',
+            'cod_fee',
+            'collectable_amount',
+            'total_fee',
+            'courier_fee',
+            'total_delivery_fee',
+            'collected_amount',
+        ];
+        $feeFields = [];
+        foreach ($feeKeys as $k) {
+            if (array_key_exists($k, $flat)) {
+                $feeFields[$k] = $flat[$k];
+            }
+        }
+
+        $productKeys = ['products', 'line_items', 'items', 'product_description', 'product_info', 'product_type', 'item_quantity', 'item_weight'];
+        $productInfo = [];
+        foreach ($productKeys as $k) {
+            if (array_key_exists($k, $flat)) {
+                $productInfo[$k] = $flat[$k];
+            }
+        }
+
+        return [
+            'event' => $payload['event'] ?? null,
+            'store_id' => $flat['store_id'] ?? ($payload['store_id'] ?? null),
+            'consignment_id' => $flat['consignment_id'] ?? ($payload['consignment_id'] ?? null),
+            'merchant_order_id' => $flat['merchant_order_id'] ?? ($payload['merchant_order_id'] ?? null),
+            'timestamptz' => $flat['timestamptz'] ?? ($payload['timestamptz'] ?? null),
+            'fee_fields_seen_in_flat_payload' => $feeFields,
+            'product_info_fields_seen' => $productInfo !== [] ? $productInfo : null,
+            'nested_block_keys' => [
+                'data' => isset($payload['data']) && is_array($payload['data']) ? array_keys($payload['data']) : null,
+                'order' => isset($payload['order']) && is_array($payload['order']) ? array_keys($payload['order']) : null,
+                'payload' => isset($payload['payload']) && is_array($payload['payload']) ? array_keys($payload['payload']) : null,
+                'body' => isset($payload['body']) && is_array($payload['body']) ? array_keys($payload['body']) : null,
+            ],
+            'app_columns_note' => 'Carrybee portal "Total Fee" ≈ cod_charge + shipping_cost. List "Delivery Charge" column is system_delivery_charge (POS), not webhook delivery_fee.',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function encodePayloadForLog(array $payload): string
+    {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json === false) {
+            return '{json_encode_failed}';
+        }
+        if (strlen($json) > self::PAYLOAD_LOG_MAX_BYTES) {
+            return substr($json, 0, self::PAYLOAD_LOG_MAX_BYTES).'…[truncated '.strlen($json).' bytes total]';
+        }
+
+        return $json;
+    }
 
     /**
      * @return array{status: string, message: string, code: int}
@@ -34,6 +113,12 @@ class CarrybeeWebhookService
         }
 
         if ((int) GeneralSetting::query()->value('enable_carrybee') !== 1) {
+            $this->carrybeeLog('skipped_carrybee_disabled', [
+                'event' => $event,
+                'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+                'raw_json' => $this->encodePayloadForLog($payload),
+            ]);
+
             // Carrybee’s validator sends real-looking payloads; still require HTTP 202 for the check to pass.
             return $this->successResponse('Webhook acknowledged (Carrybee sending is disabled in app settings).');
         }
@@ -44,14 +129,48 @@ class CarrybeeWebhookService
             : '';
 
         if ($consignmentId === '' && $merchantOrderId === '') {
-            // Carrybee’s validator and some events ship without IDs — still require 202 + integration header.
+            $this->carrybeeLog('skipped_no_order_identifiers', [
+                'event' => $event,
+                'raw_json' => $this->encodePayloadForLog($payload),
+            ]);
+
+            // Carrybee’s validator and some events ship without IDs — still require HTTP 202 + integration header.
             return $this->successResponse('Webhook acknowledged (no order identifiers in payload).');
         }
 
+        $this->carrybeeLog('received', [
+            'event' => $event,
+            'consignment_id' => $consignmentId,
+            'merchant_order_id' => $merchantOrderId,
+            'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+            'raw_json' => $this->encodePayloadForLog($payload),
+        ]);
+
         $sale = $this->findCarrybeeSale($consignmentId, $merchantOrderId);
         if (! $sale) {
+            $this->carrybeeLog('no_matching_sale', [
+                'event' => $event,
+                'consignment_id' => $consignmentId,
+                'merchant_order_id' => $merchantOrderId,
+                'hint' => 'merchant_order_id must match sales.invoice_no; consignment_id must match sales.consignment_id.',
+                'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+            ]);
+
             return $this->successResponse('Webhook acknowledged (no matching Carrybee sale in this system).');
         }
+
+        $sale->refresh();
+        $this->carrybeeLog('sale_matched', [
+            'event' => $event,
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'sale_consignment_id' => $sale->consignment_id,
+            'courier_name' => $sale->courier_name,
+            'shipping_cost' => $sale->shipping_cost,
+            'cod_charge' => $sale->cod_charge,
+            'system_delivery_charge' => $sale->system_delivery_charge,
+            'carrybee_style_total_fees_db' => (float) $sale->shipping_cost + (float) $sale->cod_charge,
+        ]);
 
         try {
             return $this->dispatchEvent($sale, $event, $payload);
@@ -60,6 +179,13 @@ class CarrybeeWebhookService
                 'event' => $event,
                 'consignment_id' => $consignmentId,
                 'message' => $e->getMessage(),
+            ]);
+
+            $this->carrybeeLog('exception', [
+                'event' => $event,
+                'sale_id' => $sale->id,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return $this->errorResponse('Internal server error.', 500);
@@ -110,6 +236,13 @@ class CarrybeeWebhookService
      */
     private function dispatchEvent(Sales $sale, string $event, array $payload): array
     {
+        $this->carrybeeLog('dispatch', [
+            'event' => $event,
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'courier_name' => $sale->courier_name,
+        ]);
+
         return match ($event) {
             'order.delivered' => $this->handleDelivered($sale, $payload),
             'order.partial-delivery' => $this->handlePartialDelivery($sale, $payload),
@@ -147,6 +280,16 @@ class CarrybeeWebhookService
         $fees = $this->resolveCarrybeeFees($payload, $sale);
         $codFee = $fees['cod_fee'];
         $deliveryFee = $fees['delivery_fee'];
+
+        $this->carrybeeLog('order_delivered_start', [
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'collected_amount_parsed' => $codAmount,
+            'resolved_cod_fee' => $codFee,
+            'resolved_delivery_fee' => $deliveryFee,
+            'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+            'raw_json' => $this->encodePayloadForLog($payload),
+        ]);
 
         DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
@@ -191,6 +334,16 @@ class CarrybeeWebhookService
             $sale->save();
         });
 
+        $sale->refresh();
+        $this->carrybeeLog('order_delivered_done', [
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'shipping_cost' => $sale->shipping_cost,
+            'cod_charge' => $sale->cod_charge,
+            'paid_amount' => $sale->paid_amount,
+            'carrybee_style_total_fees_db' => (float) $sale->shipping_cost + (float) $sale->cod_charge,
+        ]);
+
         $this->logActivity($sale, 'order.delivered', $payload);
 
         return $this->successResponse('Delivered status recorded.');
@@ -209,6 +362,16 @@ class CarrybeeWebhookService
         $fees = $this->resolveCarrybeeFees($payload, $sale);
         $codFee = $fees['cod_fee'];
         $deliveryFee = $fees['delivery_fee'];
+
+        $this->carrybeeLog('order_partial_delivery_start', [
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'collected_amount_parsed' => $codAmount,
+            'resolved_cod_fee' => $codFee,
+            'resolved_delivery_fee' => $deliveryFee,
+            'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+            'raw_json' => $this->encodePayloadForLog($payload),
+        ]);
 
         DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
@@ -253,6 +416,16 @@ class CarrybeeWebhookService
             $sale->save();
             $this->stockService->adjustStockForCancelledSale($sale);
         });
+
+        $sale->refresh();
+        $this->carrybeeLog('order_partial_delivery_done', [
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'shipping_cost' => $sale->shipping_cost,
+            'cod_charge' => $sale->cod_charge,
+            'paid_amount' => $sale->paid_amount,
+            'carrybee_style_total_fees_db' => (float) $sale->shipping_cost + (float) $sale->cod_charge,
+        ]);
 
         $this->logActivity($sale, 'order.partial-delivery', $payload);
 
@@ -311,6 +484,21 @@ class CarrybeeWebhookService
      */
     private function handleCreatedOrUpdated(Sales $sale, string $event, array $payload): array
     {
+        $sale->refresh();
+        $before = [
+            'shipping_cost' => $sale->shipping_cost,
+            'cod_charge' => $sale->cod_charge,
+            'system_delivery_charge' => $sale->system_delivery_charge,
+        ];
+
+        $this->carrybeeLog('order_created_or_updated_start', [
+            'event' => $event,
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'before' => $before,
+            'snapshot' => $this->extractCarrybeeLogSnapshot($payload),
+        ]);
+
         $fees = $this->resolveCarrybeeFees($payload, $sale);
         $deliveryFee = $fees['delivery_fee'];
         $codFee = $fees['cod_fee'];
@@ -321,9 +509,27 @@ class CarrybeeWebhookService
         if ($codFee !== null) {
             $sale->cod_charge = $codFee;
         }
-        if ($sale->isDirty(['shipping_cost', 'cod_charge'])) {
+
+        $dirty = $sale->isDirty(['shipping_cost', 'cod_charge']);
+        if ($dirty) {
             $sale->save();
         }
+
+        $sale->refresh();
+        $this->carrybeeLog('order_created_or_updated_done', [
+            'event' => $event,
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'applied_delivery_fee' => $deliveryFee,
+            'applied_cod_fee' => $codFee,
+            'db_saved' => $dirty,
+            'after' => [
+                'shipping_cost' => $sale->shipping_cost,
+                'cod_charge' => $sale->cod_charge,
+                'system_delivery_charge' => $sale->system_delivery_charge,
+            ],
+            'carrybee_style_total_fees_db' => (float) $sale->shipping_cost + (float) $sale->cod_charge,
+        ]);
 
         $this->logActivity($sale, $event, $payload);
 
@@ -391,10 +597,12 @@ class CarrybeeWebhookService
 
         // Some Carrybee payloads provide only a total fee.
         $totalFee = null;
+        $totalFeeFromKey = null;
         foreach (['total_fee', 'courier_fee', 'total_delivery_fee'] as $key) {
             $parsed = $this->optionalFee($p, $key);
             if ($parsed !== null) {
                 $totalFee = $parsed;
+                $totalFeeFromKey = $key;
                 break;
             }
         }
@@ -411,6 +619,34 @@ class CarrybeeWebhookService
                 $deliveryFee = max(0, $totalFee - $codFee);
             }
         }
+
+        $this->carrybeeLog('fees_resolved', [
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'total_fee_from_key' => $totalFeeFromKey,
+            'total_fee_value' => $totalFee,
+            'resolved_delivery_fee' => $deliveryFee,
+            'resolved_cod_fee' => $codFee,
+            'resolved_sum' => ($deliveryFee !== null && $codFee !== null)
+                ? (float) $deliveryFee + (float) $codFee
+                : null,
+            'sale_before_resolve' => [
+                'shipping_cost' => $sale->shipping_cost,
+                'cod_charge' => $sale->cod_charge,
+            ],
+            'flat_payload_fee_snapshot' => array_intersect_key(
+                $p,
+                array_flip([
+                    'delivery_fee',
+                    'cod_fee',
+                    'collectable_amount',
+                    'total_fee',
+                    'courier_fee',
+                    'total_delivery_fee',
+                    'collected_amount',
+                ])
+            ),
+        ]);
 
         return [
             'delivery_fee' => $deliveryFee,
