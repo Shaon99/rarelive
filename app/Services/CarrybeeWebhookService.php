@@ -123,13 +123,19 @@ class CarrybeeWebhookService
         $codFee = array_key_exists('cod_fee', $payload)
             ? $this->parseAmount($payload['cod_fee'])
             : null;
+        $deliveryFee = array_key_exists('delivery_fee', $payload)
+            ? $this->parseAmount($payload['delivery_fee'])
+            : null;
 
-        DB::transaction(function () use ($sale, $codAmount, $codFee) {
+        DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
             $paymentAccount = $this->ensureCarrybeePaymentMethod();
 
             $sale->status = 'delivered';
             $sale->payment_status = 1;
+            if ($deliveryFee !== null) {
+                $sale->shipping_cost = $deliveryFee;
+            }
             $sale->cod_charge = $codFee ?? (float) $sale->cod_charge;
             if ($sale->cod_charge < 0) {
                 $sale->cod_charge = 0;
@@ -182,14 +188,20 @@ class CarrybeeWebhookService
         $codFee = array_key_exists('cod_fee', $payload)
             ? $this->parseAmount($payload['cod_fee'])
             : null;
+        $deliveryFee = array_key_exists('delivery_fee', $payload)
+            ? $this->parseAmount($payload['delivery_fee'])
+            : null;
 
-        DB::transaction(function () use ($sale, $codAmount, $codFee) {
+        DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
             $paymentAccount = $this->ensureCarrybeePaymentMethod();
 
             $sale->status = 'partial_delivered';
             $sale->system_status = 'partial_delivered';
             $sale->payment_status = 3;
+            if ($deliveryFee !== null) {
+                $sale->shipping_cost = $deliveryFee;
+            }
             $sale->cod_charge = $codFee ?? (float) $sale->cod_charge;
             if ($sale->cod_charge < 0) {
                 $sale->cod_charge = 0;
@@ -281,21 +293,31 @@ class CarrybeeWebhookService
      */
     private function handleCreatedOrUpdated(Sales $sale, string $event, array $payload): array
     {
-        $deliveryFee = $this->parseAmount($payload['delivery_fee'] ?? null);
-        $codFee = $this->parseAmount($payload['cod_fee'] ?? null);
+        $deliveryFee = array_key_exists('delivery_fee', $payload)
+            ? $this->parseAmount($payload['delivery_fee'])
+            : null;
+        $codFee = array_key_exists('cod_fee', $payload)
+            ? $this->parseAmount($payload['cod_fee'])
+            : null;
 
-        $sale->shipping_cost = $deliveryFee;
-        $sale->cod_charge = $codFee;
+        if ($deliveryFee !== null) {
+            $sale->shipping_cost = $deliveryFee;
+        }
+        if ($codFee !== null) {
+            $sale->cod_charge = $codFee;
+        }
         $sale->save();
 
         $this->logActivity($sale, $event, $payload);
 
-        $courierCost = $deliveryFee + $codFee;
+        $effectiveDeliveryFee = (float) $sale->shipping_cost;
+        $effectiveCodFee = (float) $sale->cod_charge;
+        $courierCost = $effectiveDeliveryFee + $effectiveCodFee;
 
         return $this->successResponse(sprintf(
             'Courier fees updated. Delivery: %.2f, COD: %.2f, Courier total: %.2f.',
-            $deliveryFee,
-            $codFee,
+            $effectiveDeliveryFee,
+            $effectiveCodFee,
             $courierCost
         ));
     }
