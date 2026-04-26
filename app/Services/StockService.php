@@ -24,6 +24,52 @@ class StockService
     }
 
     /**
+     * Put inventory back when a sale row is removed from the database.
+     * Uses line quantity minus already-returned qty (sale return adjustment), so stock is not double-restored.
+     */
+    public function restoreStockForSaleDeletion(Sales $sale): void
+    {
+        foreach ($sale->salesProduct as $salesProduct) {
+            $returned = (float) ($salesProduct->returned_quantity ?? 0);
+            $qty = max(0.0, (float) $salesProduct->quantity - $returned);
+            if ($qty <= 0) {
+                continue;
+            }
+            if ($salesProduct->product_id) {
+                $this->incrementProductWarehouseStock(
+                    (int) $salesProduct->product_id,
+                    (int) $salesProduct->warehouse_id,
+                    $qty
+                );
+            } elseif ($salesProduct->combo_id) {
+                $combo = Combo::find($salesProduct->combo_id);
+                if ($combo) {
+                    $combo->quantity += $qty;
+                    $combo->save();
+                }
+            }
+        }
+    }
+
+    private function incrementProductWarehouseStock(int $productId, int $warehouseId, float $qty): void
+    {
+        $product = Product::find($productId);
+        if (! $product) {
+            return;
+        }
+        $product->quantity += $qty;
+        $product->save();
+
+        $warehouse = WarehouseProducts::where('warehouse_id', $warehouseId)
+            ->where('product_id', $productId)
+            ->first();
+        if ($warehouse) {
+            $warehouse->quantity += $qty;
+            $warehouse->save();
+        }
+    }
+
+    /**
      * Adjust stock for a product.
      *
      * @param  object  $salesProduct

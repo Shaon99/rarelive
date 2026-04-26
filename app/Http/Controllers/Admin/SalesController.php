@@ -189,7 +189,7 @@ class SalesController extends Controller
     {
         $data['salesNav'] = 'active';
         $data['singleSale'] = Sales::with('customer', 'warehouse', 'salesProduct.product', 'paymentMethod', 'transactions.paymentMethod')->findOrFail($id);
-        $data['pageTitle'] = 'Sales For - ' . @$data['singleSale']->customer->name;
+        $data['pageTitle'] = 'Sales For - '.@$data['singleSale']->customer->name;
 
         return view('backend.sales.view')->with($data);
     }
@@ -249,7 +249,7 @@ class SalesController extends Controller
                 'message' => 'Order has been created',
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error updating sale: ' . $e->getMessage(), [
+            Log::error('Error updating sale: '.$e->getMessage(), [
                 'exception' => $e,
                 'request' => $request->all(),
                 'sale_id' => $id,
@@ -269,7 +269,16 @@ class SalesController extends Controller
      */
     public function destroy($id)
     {
-        Sales::findOrFail($id)->delete();
+        $this->assertOrderDeletePermission();
+
+        $sale = Sales::with('salesProduct')->findOrFail($id);
+
+        DB::transaction(function () use ($sale) {
+            if ($this->shouldRestoreStockOnSaleDeletion($sale)) {
+                $this->stockService->restoreStockForSaleDeletion($sale);
+            }
+            $sale->delete();
+        });
 
         return back()->with('success', 'Sales Deleted successfully');
     }
@@ -283,13 +292,24 @@ class SalesController extends Controller
 
     public function salesDelete($id)
     {
-        Sales::onlyTrashed()->findOrFail($id)->forceDelete();
+        $this->assertOrderDeletePermission();
+
+        $sale = Sales::onlyTrashed()->with('salesProduct')->findOrFail($id);
+
+        DB::transaction(function () use ($sale) {
+            if ($this->shouldRestoreStockOnSaleDeletion($sale)) {
+                $this->stockService->restoreStockForSaleDeletion($sale);
+            }
+            $sale->forceDelete();
+        });
 
         return back()->with('success', 'Sales Deleted successfully');
     }
 
     public function deleteBulk(Request $request)
     {
+        $this->assertOrderDeletePermission();
+
         $sales = $request->input('sales');
 
         if (empty($sales)) {
@@ -297,14 +317,50 @@ class SalesController extends Controller
         }
 
         $salesArray = is_string($sales) ? explode(',', $sales) : (array) $sales;
+        $salesArray = array_values(array_filter(array_map('intval', $salesArray)));
 
-        // Delete related sale_product_returns first
-        DB::table('sale_product_returns')->whereIn('sale_id', $salesArray)->delete();
+        if ($salesArray === []) {
+            return redirect()->back()->with('error', 'No item selected.');
+        }
 
-        // Then delete sales
-        Sales::whereIn('id', $salesArray)->delete();
+        $salesCollection = Sales::with('salesProduct')->whereIn('id', $salesArray)->get();
+
+        DB::transaction(function () use ($salesCollection, $salesArray) {
+            foreach ($salesCollection as $sale) {
+                if ($this->shouldRestoreStockOnSaleDeletion($sale)) {
+                    $this->stockService->restoreStockForSaleDeletion($sale);
+                }
+            }
+
+            DB::table('sale_product_returns')->whereIn('sale_id', $salesArray)->delete();
+            Sales::whereIn('id', $salesArray)->delete();
+        });
 
         return redirect()->back()->with('success', 'Selected items deleted successfully!');
+    }
+
+    private function assertOrderDeletePermission(): void
+    {
+        $user = auth()->guard('admin')->user();
+        if (! $user || ! $user->can('order_delete')) {
+            abort(401);
+        }
+    }
+
+    /**
+     * Skip stock restore when inventory was already returned (partial delivery webhooks) or
+     * when the order is treated as fully shipped (delivered + completed).
+     */
+    private function shouldRestoreStockOnSaleDeletion(Sales $sale): bool
+    {
+        if ($sale->status === 'partial_delivered' || $sale->system_status === 'partial_delivered') {
+            return false;
+        }
+        if ($sale->status === 'delivered' && $sale->system_status === 'completed') {
+            return false;
+        }
+
+        return true;
     }
 
     // category-response
@@ -326,7 +382,7 @@ class SalesController extends Controller
     {
         $data['salesNav'] = 'active';
         $data['singleSale'] = Sales::with('customer', 'warehouse', 'salesProduct')->findOrFail($id);
-        $data['pageTitle'] = 'Invoice #' . @$data['singleSale']->invoice_no;
+        $data['pageTitle'] = 'Invoice #'.@$data['singleSale']->invoice_no;
 
         return view('backend.sales.invoice')->with($data);
     }
@@ -380,7 +436,7 @@ class SalesController extends Controller
                     'credit' => null,
                     'transaction_type' => 'payment_received',
                     'transaction_tag' => 'due_paid',
-                    'note' => 'PAYMENT RECEIVED: ' . $customerName,
+                    'note' => 'PAYMENT RECEIVED: '.$customerName,
                     'payment_method_id' => $paymentAccount->id,
                 ]);
 
@@ -392,7 +448,7 @@ class SalesController extends Controller
 
             return back()->with('success', 'Due Amount paid successfully');
         } catch (\Exception $e) {
-            return back()->with('error', 'An error occurred while processing the payment: ' . $e->getMessage());
+            return back()->with('error', 'An error occurred while processing the payment: '.$e->getMessage());
         }
     }
 
@@ -466,6 +522,7 @@ class SalesController extends Controller
         WHERE transactionable_type = ? AND created_at < ?';
 
         $result = DB::selectOne($query, [Sales::class, $start]);
+
         return $result->balance ?? 0;
     }
 
@@ -495,7 +552,6 @@ class SalesController extends Controller
 
         return collect(DB::select($query, [Sales::class, Sales::class, $start, $end]));
     }
-
 
     /**
      * Process transactions to calculate running balance and totals
@@ -844,7 +900,7 @@ class SalesController extends Controller
     public function checkSteadfastStatus(Request $request)
     {
         $ip = $request->ip();
-        $key = 'status-attempts:' . $ip;
+        $key = 'status-attempts:'.$ip;
 
         try {
             // Check rate limit
