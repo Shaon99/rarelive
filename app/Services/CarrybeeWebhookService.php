@@ -120,12 +120,9 @@ class CarrybeeWebhookService
         }
 
         $codAmount = $this->parseAmount($payload['collected_amount'] ?? '0');
-        $codFee = array_key_exists('cod_fee', $payload)
-            ? $this->parseAmount($payload['cod_fee'])
-            : null;
-        $deliveryFee = array_key_exists('delivery_fee', $payload)
-            ? $this->parseAmount($payload['delivery_fee'])
-            : null;
+        $fees = $this->resolveCarrybeeFees($payload, $sale);
+        $codFee = $fees['cod_fee'];
+        $deliveryFee = $fees['delivery_fee'];
 
         DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
@@ -185,12 +182,9 @@ class CarrybeeWebhookService
         }
 
         $codAmount = $this->parseAmount($payload['collected_amount'] ?? '0');
-        $codFee = array_key_exists('cod_fee', $payload)
-            ? $this->parseAmount($payload['cod_fee'])
-            : null;
-        $deliveryFee = array_key_exists('delivery_fee', $payload)
-            ? $this->parseAmount($payload['delivery_fee'])
-            : null;
+        $fees = $this->resolveCarrybeeFees($payload, $sale);
+        $codFee = $fees['cod_fee'];
+        $deliveryFee = $fees['delivery_fee'];
 
         DB::transaction(function () use ($sale, $codAmount, $codFee, $deliveryFee) {
             $sale->refresh();
@@ -293,12 +287,9 @@ class CarrybeeWebhookService
      */
     private function handleCreatedOrUpdated(Sales $sale, string $event, array $payload): array
     {
-        $deliveryFee = array_key_exists('delivery_fee', $payload)
-            ? $this->parseAmount($payload['delivery_fee'])
-            : null;
-        $codFee = array_key_exists('cod_fee', $payload)
-            ? $this->parseAmount($payload['cod_fee'])
-            : null;
+        $fees = $this->resolveCarrybeeFees($payload, $sale);
+        $deliveryFee = $fees['delivery_fee'];
+        $codFee = $fees['cod_fee'];
 
         if ($deliveryFee !== null) {
             $sale->shipping_cost = $deliveryFee;
@@ -306,7 +297,9 @@ class CarrybeeWebhookService
         if ($codFee !== null) {
             $sale->cod_charge = $codFee;
         }
-        $sale->save();
+        if ($sale->isDirty(['shipping_cost', 'cod_charge'])) {
+            $sale->save();
+        }
 
         $this->logActivity($sale, $event, $payload);
 
@@ -320,6 +313,49 @@ class CarrybeeWebhookService
             $effectiveCodFee,
             $courierCost
         ));
+    }
+
+    /**
+     * Resolve carrybee fee fields from multiple payload shapes.
+     *
+     * @return array{delivery_fee: ?float, cod_fee: ?float}
+     */
+    private function resolveCarrybeeFees(array $payload, Sales $sale): array
+    {
+        $deliveryFee = array_key_exists('delivery_fee', $payload)
+            ? $this->parseAmount($payload['delivery_fee'])
+            : null;
+
+        $codFee = array_key_exists('cod_fee', $payload)
+            ? $this->parseAmount($payload['cod_fee'])
+            : null;
+
+        // Some Carrybee payloads provide only a total fee.
+        $totalFee = null;
+        foreach (['total_fee', 'courier_fee', 'total_delivery_fee'] as $key) {
+            if (array_key_exists($key, $payload)) {
+                $totalFee = $this->parseAmount($payload[$key]);
+                break;
+            }
+        }
+
+        // Derive missing side from total fee whenever possible.
+        if ($totalFee !== null) {
+            if ($deliveryFee === null && $codFee !== null) {
+                $deliveryFee = max(0, $totalFee - $codFee);
+            } elseif ($codFee === null && $deliveryFee !== null) {
+                $codFee = max(0, $totalFee - $deliveryFee);
+            } elseif ($deliveryFee === null && $codFee === null) {
+                // Keep COD as previous value if total fee alone arrives, then derive delivery.
+                $codFee = (float) $sale->cod_charge;
+                $deliveryFee = max(0, $totalFee - $codFee);
+            }
+        }
+
+        return [
+            'delivery_fee' => $deliveryFee,
+            'cod_fee' => $codFee,
+        ];
     }
 
     /**
