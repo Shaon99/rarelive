@@ -77,6 +77,7 @@ Route::name('admin.')->group(function () {
         Route::get('customer-recover/{id}', [CustomerController::class, 'customerRestore'])->name('customer.restore');
         Route::delete('customer-delete-forever/{id}', [CustomerController::class, 'customerDelete'])->name('customer.deleteforever');
         Route::post('/search-customer', [CustomerController::class, 'searchCustomer'])->name('search.customer');
+        Route::get('/suggest-customer', [CustomerController::class, 'suggestCustomer'])->name('suggest.customer');
         Route::post('/add-address', [CustomerController::class, 'addAddress'])->name('add.address');
 
         Route::get('order-history/{id}', [CustomerController::class, 'customerOrderHistory'])->name('customer.customerOrderHistory');

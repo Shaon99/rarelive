@@ -275,6 +275,29 @@ class CustomerController extends Controller
         }
     }
 
+    public function suggestCustomer(Request $request)
+    {
+        $request->validate(['query' => 'required|string|min:2']);
+
+        $query = trim((string) $request->input('query', ''));
+
+        $customers = Customer::query()
+            ->select('id', 'name', 'phone')
+            ->where(function ($q) use ($query) {
+                $q->where('phone', 'like', "%{$query}%")
+                    ->orWhere('name', 'like', "%{$query}%");
+            })
+            ->orderByRaw("CASE WHEN phone LIKE ? THEN 0 ELSE 1 END", ["{$query}%"])
+            ->orderBy('name')
+            ->limit(8)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'customers' => $customers,
+        ]);
+    }
+
     public function addAddress(Request $request)
     {
         $request->validate([

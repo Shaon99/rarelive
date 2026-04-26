@@ -17,16 +17,28 @@
         <section class="section">
             <div class="loading-overlay loading-show d-none">
             </div>
-            <form id="salesForm" action="{{ route('admin.sales.store') }}" method="POST">
+            <form id="salesForm" action="{{ route('admin.sales.store') }}" method="POST" autocomplete="off">
                 @csrf
+                {{-- Absorb browser autofill heuristics so customer phone stays single-source (our suggestions only) --}}
+                <div class="position-absolute" style="left: -9999px; width: 1px; height: 1px; overflow: hidden;"
+                    aria-hidden="true" tabindex="-1">
+                    <input type="text" tabindex="-1" autocomplete="off">
+                    <input type="password" tabindex="-1" autocomplete="new-password">
+                </div>
                 <div class="row" style="margin-right: -9px; margin-left: -9px;">
                     <div class="col-md-6 col-12 border-r card p-2 mb-2 rounded">
                         <div class="row">
                             <div class="col-md-12">
                                 <div class="row align-items-center">
-                                    <div class="col-md-6 col-12 col-sm-12 mb-1">
+                                    <div class="col-md-6 col-12 col-sm-12 mb-1 position-relative">
                                         <input type="text" class="form-control searchInputBox" name="customer_phone"
-                                            id="phoneInput" placeholder="Enter Customer Phone Number">
+                                            id="phoneInput" placeholder="Enter Customer Phone Number"
+                                            autocomplete="off" autocorrect="off" autocapitalize="off"
+                                            spellcheck="false" data-lpignore="true" data-1p-ignore="true"
+                                            data-form-type="other" readonly>
+                                        <div id="customerSuggestionBox" class="list-group"
+                                            style="position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 1055; display: none; max-height: 220px; overflow-y: auto;">
+                                        </div>
                                         <small class="error-phone text-danger"></small>
                                     </div>
                                     <div class="col-md-3 col-6 col-sm-6 mb-2 text-md-right">
@@ -783,6 +795,65 @@
 
             let lastPhoneNumber = '';
             let lastCustomerFound = false;
+            let suggestionTimer;
+            const suggestionBox = $('#customerSuggestionBox');
+            const phoneInputEl = document.getElementById('phoneInput');
+
+            function enablePhoneInputEditing() {
+                if (phoneInputEl && phoneInputEl.hasAttribute('readonly')) {
+                    phoneInputEl.removeAttribute('readonly');
+                }
+            }
+
+            $('#phoneInput').on('mousedown touchstart', enablePhoneInputEditing);
+            $('#phoneInput').on('focus', enablePhoneInputEditing);
+
+            function loadCustomerSuggestions(query) {
+                const cleanQuery = (query || '').trim();
+                if (cleanQuery.length < 2) {
+                    suggestionBox.hide().empty();
+                    return;
+                }
+
+                // Start suggesting as soon as user types "01"
+                if (!cleanQuery.startsWith('01')) {
+                    suggestionBox.hide().empty();
+                    return;
+                }
+
+                $.ajax({
+                    url: '{{ route('admin.suggest.customer') }}',
+                    method: 'GET',
+                    data: {
+                        query: cleanQuery
+                    },
+                    success: function(response) {
+                        suggestionBox.empty().hide();
+                        if (!response || response.status !== 'success' || !Array.isArray(response.customers)) {
+                            return;
+                        }
+
+                        if (!response.customers.length) {
+                            return;
+                        }
+
+                        response.customers.forEach(function(customer) {
+                            const label = `${customer.name} (${customer.phone})`;
+                            suggestionBox.append(`
+                                <button type="button" class="list-group-item list-group-item-action customer-suggestion-item"
+                                    data-phone="${customer.phone}">
+                                    ${label}
+                                </button>
+                            `);
+                        });
+
+                        suggestionBox.show();
+                    },
+                    error: function() {
+                        suggestionBox.hide().empty();
+                    }
+                });
+            }
 
             function fetchCustomer(phone) {
                 if (phone === '') return;
@@ -863,8 +934,33 @@
                 });
             }
             // Trigger modal when phone input changes or loses focus
+            $('#phoneInput').on('keyup', function() {
+                clearTimeout(suggestionTimer);
+                const query = $(this).val();
+                suggestionTimer = setTimeout(function() {
+                    loadCustomerSuggestions(query);
+                }, 220);
+            });
+
+            $(document).on('mousedown', '.customer-suggestion-item', function(e) {
+                e.preventDefault();
+                const phone = String($(this).attr('data-phone') || '').trim();
+                enablePhoneInputEditing();
+                $('#phoneInput').prop('readonly', false).val(phone);
+                suggestionBox.hide().empty();
+                lastPhoneNumber = phone;
+                fetchCustomer(phone);
+            });
+
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('#phoneInput, #customerSuggestionBox').length) {
+                    suggestionBox.hide();
+                }
+            });
+
             $('#phoneInput').on('change', function() {
                 const phone = $(this).val().trim();
+                suggestionBox.hide().empty();
 
                 if (phone === lastPhoneNumber && lastCustomerFound) {
                     // If the number is the same and a customer was found, show the modal
@@ -1180,7 +1276,8 @@
                         $('#print-container').css('display', 'none');
 
                         // Manually reset only non-Livewire fields
-                        $('#phoneInput').val('');
+                        $('#phoneInput').val('').attr('readonly', 'readonly');
+                        $('#customerSuggestionBox').hide().empty();
                         $('#address_input').val('');
                         $('#platform').val('');
                         $('#duepayment').val(0);

@@ -102,8 +102,8 @@ class CarrybeeWebhookService
             'order.picked' => $this->handleInProgress($sale, $event),
             'order.pickup-requested' => $this->handleInProgress($sale, $event),
             'order.assigned-for-pickup' => $this->handleInProgress($sale, $event),
-            'order.created' => $this->noopOk($event),
-            'order.updated' => $this->noopOk($event),
+            'order.created' => $this->handleCreatedOrUpdated($sale, $event, $payload),
+            'order.updated' => $this->handleCreatedOrUpdated($sale, $event, $payload),
             'order.delivery-on-hold' => $this->noopOk($event),
             'order.paid' => $this->noopOk($event),
             default => $this->noopOk($event),
@@ -120,17 +120,17 @@ class CarrybeeWebhookService
         }
 
         $codAmount = $this->parseAmount($payload['collected_amount'] ?? '0');
+        $codFee = array_key_exists('cod_fee', $payload)
+            ? $this->parseAmount($payload['cod_fee'])
+            : null;
 
-        DB::transaction(function () use ($sale, $codAmount) {
+        DB::transaction(function () use ($sale, $codAmount, $codFee) {
             $sale->refresh();
             $paymentAccount = $this->ensureCarrybeePaymentMethod();
 
             $sale->status = 'delivered';
             $sale->payment_status = 1;
-            $codPct = (float) (optional(generalSetting())->steadfast_cod_charge ?? 0);
-            $sale->cod_charge = $codAmount > 0
-                ? ($codAmount - (float) $sale->shipping_cost) * ($codPct / 100)
-                : 0;
+            $sale->cod_charge = $codFee ?? (float) $sale->cod_charge;
             if ($sale->cod_charge < 0) {
                 $sale->cod_charge = 0;
             }
@@ -179,18 +179,18 @@ class CarrybeeWebhookService
         }
 
         $codAmount = $this->parseAmount($payload['collected_amount'] ?? '0');
+        $codFee = array_key_exists('cod_fee', $payload)
+            ? $this->parseAmount($payload['cod_fee'])
+            : null;
 
-        DB::transaction(function () use ($sale, $codAmount) {
+        DB::transaction(function () use ($sale, $codAmount, $codFee) {
             $sale->refresh();
             $paymentAccount = $this->ensureCarrybeePaymentMethod();
 
             $sale->status = 'partial_delivered';
             $sale->system_status = 'partial_delivered';
             $sale->payment_status = 3;
-            $codPct = (float) (optional(generalSetting())->steadfast_cod_charge ?? 0);
-            $sale->cod_charge = $codAmount > 0
-                ? ($codAmount - (float) $sale->shipping_cost) * ($codPct / 100)
-                : 0;
+            $sale->cod_charge = $codFee ?? (float) $sale->cod_charge;
             if ($sale->cod_charge < 0) {
                 $sale->cod_charge = 0;
             }
@@ -274,6 +274,30 @@ class CarrybeeWebhookService
         $this->logActivity($sale, $event, []);
 
         return $this->successResponse('Status updated.');
+    }
+
+    /**
+     * @return array{status: string, message: string, code: int}
+     */
+    private function handleCreatedOrUpdated(Sales $sale, string $event, array $payload): array
+    {
+        $deliveryFee = $this->parseAmount($payload['delivery_fee'] ?? null);
+        $codFee = $this->parseAmount($payload['cod_fee'] ?? null);
+
+        $sale->shipping_cost = $deliveryFee;
+        $sale->cod_charge = $codFee;
+        $sale->save();
+
+        $this->logActivity($sale, $event, $payload);
+
+        $courierCost = $deliveryFee + $codFee;
+
+        return $this->successResponse(sprintf(
+            'Courier fees updated. Delivery: %.2f, COD: %.2f, Courier total: %.2f.',
+            $deliveryFee,
+            $codFee,
+            $courierCost
+        ));
     }
 
     /**
