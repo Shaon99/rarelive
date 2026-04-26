@@ -1,0 +1,506 @@
+Written by Anonymous
+.border-product {
+    border: 1px solid #cdd0f7;
+    cursor: pointer;
+    border-radius: 5px!important;
+}
+
+.select-box-branch{
+    width: 200px;
+    border-radius: 8px;
+}
+
+.border-product img {
+    cursor: pointer;
+    border-start-start-radius: 5px !important;
+    border-start-end-radius: 5px !important;
+    object-fit: cover;
+}
+.card{
+    border-radius: 5px!important;
+}
+
+.border-r {
+    border-right: 1px solid #cdd0f7;
+}
+
+.border-product{
+    border: 1px solid #f0f0f0!important;
+}
+
+.border-product:hover {
+    border: 1px solid #d5c4ff !important;
+}
+
+
+.sticky-footer {
+    position: fixed;
+    bottom: 0px;
+    z-index: 9999;
+    background-color: #edefff;
+    padding: 10px;
+}
+
+@media (max-width: 768px) {
+    .sticky-footer {
+        position: static !important;
+    }
+}
+
+.custom-width-btn {
+    width: 100%;
+}
+
+@media (min-width: 768px) {
+    .custom-width-btn {
+        width: 25%;
+    }
+
+    .product-scroll-table {
+        height: 225px !important;
+    }
+}
+
+.sticky-footer label {
+    font-size: 12px;
+    color: black;
+    font-weight: 600;
+}
+
+.product-scroll-table::-webkit-scrollbar {
+    width: 5px;
+}
+
+.product-scroll-table::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.product-scroll-table::-webkit-scrollbar-thumb {
+    background: rgb(237 239 255);
+}
+
+.product-scroll-table::-webkit-scrollbar-thumb:hover {
+    background: rgb(209, 209, 209);
+}
+
+/* category */
+.product-scroll::-webkit-scrollbar {
+    width: 5px;
+}
+
+
+.product-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+
+.product-scroll::-webkit-scrollbar-thumb {
+    background: rgb(237 239 255);
+}
+
+
+.product-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(209, 209, 209);
+}
+
+/* Base scroll styles */
+.product-scroll {
+    overflow-y: auto;
+    height: 420px;
+}
+
+.product-scroll-table {
+    overflow-y: auto;
+    height: 340px;
+}
+
+/* Larger screens: increase scroll area */
+@media (min-width: 1301px) {
+    .product-scroll {
+        height: 580px;
+    }
+
+    .product-scroll-table {
+        height: 420px;
+    }
+}
+
+
+.table:not(.table-sm) thead th {
+    background-color: rgb(237 239 255) !important;
+    color: #000000 !important;
+    height: 30px !important;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.table:not(.table-sm):not(.table-md):not(.dataTable) td{
+    padding: 0 !important;
+}
+.table:not(.table-sm):not(.table-md):not(.dataTable) th{
+    padding: 5px 8px 5px 10px !important;
+}
+
+.product-price,.discount-price{
+    width: 80px;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 3px 3px 3px 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.plus{
+    padding: 0px 0px 0px 8px !important;
+    outline: none !important;
+    border: none;
+    background: none;
+}
+
+.minus{
+    padding: 0px 8px 0px 0px !important;
+    outline: none !important;
+    border: none;
+    background: none;
+}
+
+.minus:focus, .plus:focus{
+    outline: none !important;
+    border: none;
+}
+
+.qty {
+    padding: 3px 3px 3px 8px!important;
+    width: 50px !important;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.searchInputBox{
+    border-radius: 8px;
+}
+
+.card-footer {
+    padding: 0 !important;
+    background-color: #fafdfb !important;
+    border-top: 0 !important;
+}
+
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+
+.grand-total{
+    background: #dee2ff;
+    text-align: end;
+}
+
+.subtotal-text{
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+}
+
+
+.d-flex small {
+    max-width: 33%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
+.address-show {
+    flex: 1;
+    min-width: 0;
+}
+
+@media print {
+    /* Hide everything except the print container */
+    body * {
+        visibility: hidden;
+    }
+    #print-container, #print-container * {
+        visibility: visible;
+    }
+    #print-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+}
+
+
+.cursor-pointer{
+    cursor: pointer!important;
+}
+
+.parcel-id {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.invoice-container {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.company-logo {
+    width: 80px;
+    height: 80px;
+    background-color: #b0b0b0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 30px;
+    margin-bottom: 10px;
+}
+
+.company-name {
+    font-weight: 600;
+    margin-top: 10px;
+    font-size: 18px;
+}
+
+.section-title {
+    font-weight: 600;
+    font-size: 18px;
+    margin-bottom: 15px;
+}
+
+.info-row {
+    margin-bottom: 5px;
+}
+
+.info-label {
+    font-weight: 600;
+}
+
+.cod-badge {
+    display: inline-block;
+    border: 1px solid #333;
+    padding: 8px 15px;
+    border-radius: 4px;
+    font-weight: 600;
+    margin-top: 10px;
+}
+
+.note {
+    margin-top: 20px;
+    font-weight: 600;
+}
+
+.btn-invoice {
+    background-color: #00b894;
+    color: white;
+    border: none;
+}
+
+.btn-label {
+    background-color: white;
+    color: #333;
+    border: 1px solid #ddd;
+}
+
+.btn-print {
+    background-color: #00b894;
+    color: white;
+    border: none;
+    padding: 8px 25px;
+}
+
+.invoice-header {
+    text-align: right;
+}
+
+.invoice-title {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+/* Print styles */
+@media print {
+    body {
+        background-color: white !important;
+        margin: 0;
+        padding: 0;
+    }
+
+    .container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .header,
+    .no-print,
+    .btn-print {
+        display: none !important;
+    }
+
+    .invoice-container {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        padding: 15px !important;
+        margin: 0 !important;
+        width: 100% !important;
+    }
+
+    .company-logo {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #b0b0b0 !important;
+        color: white !important;
+    }
+
+    .cod-badge {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        border: 1px solid #333 !important;
+    }
+
+    .row {
+        display: flex !important;
+        flex-wrap: wrap !important;
+    }
+
+    .col-md-6 {
+        flex: 0 0 50% !important;
+        max-width: 50% !important;
+    }
+
+    /* Force background colors to print */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    img {
+        display: block !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+
+    .info-row {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
+
+/* Reports Section Styling */
+.reports-section {
+    margin-top: 20px;
+}
+
+.reports-section h5 {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.reports-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.report-item {
+    background-color: #f9f9f9;
+    padding: 12px;
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    font-size: 1em;
+    color: #333;
+}
+
+.report-item:hover {
+    background-color: #f1f1f1;
+    cursor: pointer;
+}
+
+/* Fallback for when there are no reports */
+.reports-section p {
+    font-size: 1em;
+    color: #888;
+    font-style: italic;
+}
+
+
+/* Courier specific color for text */
+.courier-row {
+    margin-bottom: 20px;
+}
+
+.courier-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+}
+
+.courier-table th,
+.courier-table td {
+    padding: 10px;
+    text-align: center;
+    border: 1px solid #ddd;
+}
+
+.courier-table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+.courier-table td {
+    background-color: #ffffff;
+}
+
+.courier-table th:first-child,
+.courier-table td:first-child {
+    text-align: left;
+    padding-left: 12px;
+}
+
+/* Apply conditional styling for different couriers */
+.pathao { color: #e83434; } /* Blue */
+.steadfast { color: #00b795; } /* Green */
+.redx { 
+    background: linear-gradient(to right, #eb2127, #000000); 
+    -webkit-background-clip: text; 
+    -webkit-text-fill-color: transparent; 
+} /* Red to Black Gradient */
+
+.paperfly { 
+    background: linear-gradient(to right, #00adee, #17479d); 
+    -webkit-background-clip: text; 
+    -webkit-text-fill-color: transparent; 
+} /* Orange to Black Gradient */
+
+/* Add hover effect on the rows */
+.courier-table tr:hover {
+    background-color: #f9f9f9;
+    cursor: pointer;
+}
+
+.product-image{
+    max-height: 135px;
+    min-width: 100%;
+}

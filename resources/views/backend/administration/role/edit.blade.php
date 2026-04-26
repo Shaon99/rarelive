@@ -1,0 +1,161 @@
+@extends('backend.layout.master')
+
+@section('content')
+    <div class="main-content">
+        <section class="section">
+            <div class="section-header">
+                <h1>{{ __($pageTitle) }}</h1>
+                <div class="section-header-breadcrumb">
+                    <div class="breadcrumb-item">{{ __($pageTitle) }}</div>
+                    <div class="breadcrumb-item active"><a href="{{ route('admin.roles.index') }}">{{ __('Role List') }}</a>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-12 col-lg-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <form class="needs-validation" novalidate=""
+                                action="{{ route('admin.roles.update', @$role->id) }}" method="post">
+                                {{ method_field('PUT') }}
+                                @csrf
+                                <div class="d-flex justify-content-center">
+                                    <div class="form-group col-md-6">
+                                        <label>Role Name</label>
+                                        <input class="form-control" placeholder="Enter a role name" name="name"
+                                            value="{{ old('name', $role->name) }}" required="" />
+                                    </div>
+                                </div>
+                                <div class="fv-row">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="text-capitalize mb-0">{{ @$role->name }} Has
+                                            Permissions With Checked</label>
+
+                                        <div class="search-box" style="width: 300px;">
+                                            <input type="text" class="form-control" id="permissionSearch"
+                                                placeholder="Search permissions..." onkeyup="filterPermissions()">
+                                        </div>
+                                    </div>
+
+                                    <div class="table-responsive">
+                                        <table class="table table-row-dashed" id="permissionTable">
+                                            <tbody>
+                                                <tr>
+                                                    <td>
+                                                        Administrator Access
+                                                    </td>
+                                                    <td>
+                                                        <label class="form-check">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                id="roles_select_all" />
+                                                            <span class="form-check-label">
+                                                                Select all
+                                                            </span>
+                                                        </label>
+                                                    </td>
+                                                </tr>
+                                                @forelse ($permissions as $permission)
+                                                    @php
+                                                        $permission_module = Spatie\Permission\Models\Permission::where(
+                                                            'submodule_id',
+                                                            $permission->id,
+                                                        )->get();
+                                                    @endphp
+                                                    <tr class="permission-row">
+                                                        <td>
+                                                            {{ $permission->display_name }}</td>
+                                                        <td>
+                                                            <div class="row py-2">
+                                                                @forelse ($permission_module as $item)
+                                                                    @php
+                                                                        $alreadyAssign = null;
+                                                                        foreach ($getPermissionsid as $getPermission) {
+                                                                            if ($getPermission->id == $item->id) {
+                                                                                $alreadyAssign = $getPermission->id;
+                                                                                break;
+                                                                            }
+                                                                        }
+                                                                    @endphp
+                                                                    <div
+                                                                        class="col-md-3 col-lg-3 col-sm-2 col-12 permission-item">
+                                                                        <label class="form-check">
+                                                                            <input class="form-check-input" type="checkbox"
+                                                                                value="{{ $item->id }}"
+                                                                                {{ $alreadyAssign == $item->id ? 'checked' : '' }}
+                                                                                name="group_a[]" />
+                                                                            <span class="text-center permission-name">
+                                                                                {{ $item->display_name }}
+                                                                            </span>
+                                                                        </label>
+                                                                    </div>
+                                                                @empty
+                                                                @endforelse
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                @empty
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="text-center py-3">
+                                        <button type="submit" class="btn btn-primary w-50" id="submitBtn">
+                                            Save Changes
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+@endsection
+@push('script')
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const selectAllCheckbox = document.getElementById("roles_select_all");
+            const permissionCheckboxes = document.querySelectorAll("input[name='group_a[]']");
+
+            selectAllCheckbox.addEventListener("change", function() {
+                permissionCheckboxes.forEach(checkbox => {
+                    checkbox.checked = selectAllCheckbox.checked;
+                });
+            });
+
+            permissionCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener("change", function() {
+                    if (!this.checked) {
+                        selectAllCheckbox.checked = false;
+                    } else if (Array.from(permissionCheckboxes).every(cb => cb.checked)) {
+                        selectAllCheckbox.checked = true;
+                    }
+                });
+            });
+        });
+
+        function filterPermissions() {
+            const searchText = document.getElementById('permissionSearch').value.toLowerCase();
+            const rows = document.getElementsByClassName('permission-row');
+
+            Array.from(rows).forEach(row => {
+                const permissionItems = row.getElementsByClassName('permission-name');
+                const mainPermission = row.getElementsByTagName('td')[0].textContent.toLowerCase();
+                let shouldShow = false;
+
+                if (mainPermission.includes(searchText)) {
+                    shouldShow = true;
+                } else {
+                    Array.from(permissionItems).forEach(item => {
+                        if (item.textContent.toLowerCase().includes(searchText)) {
+                            shouldShow = true;
+                        }
+                    });
+                }
+
+                row.style.display = shouldShow ? '' : 'none';
+            });
+        }
+    </script>
+@endpush

@@ -1,0 +1,2 @@
+name,code,brand_name,category_name,unit_name,low_quantity_alert,description,discount,discount_type,image_url
+"Product Name","SKU123",brand_name,category_name,unit_name,10,"Product description",5,"percentage","https://placehold.co/400x400/png"

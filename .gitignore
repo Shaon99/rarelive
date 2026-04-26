@@ -1,0 +1,33 @@
+# Laravel / PHP
+/vendor/
+/node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+/public/hot
+/public/storage
+/storage/*.key
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/bootstrap/cache/*.php
+
+# IDE / OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# FTP deploy state
+.ftp-deploy-sync-state.json
+.ftpquota
+
+# PHPUnit / coverage
+/.phpunit.result.cache
+/coverage/
